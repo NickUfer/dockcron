@@ -27,8 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
-
+          ref: ${{ inputs.tag != '' && inputs.tag || github.ref }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -48,6 +47,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
+            ${{ inputs.tag != '' && format('type=raw,value={0}', inputs.tag) || '' }}
             type=ref,event=tag
             type=raw,value=latest
 
