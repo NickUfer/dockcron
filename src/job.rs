@@ -1,4 +1,4 @@
-use crate::{Label, OverlapPolicy, job};
+use crate::{Label, OverlapPolicy};
 use anyhow::{Context, anyhow};
 use bollard::Docker;
 use bollard::exec::{CreateExecOptions, StartExecResults};
@@ -16,7 +16,7 @@ use tokio::sync::Semaphore;
 use tokio::time::sleep_until;
 use tracing::{error, info, warn};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Job {
     pub container_id: String,
     pub container_name: String,
@@ -24,7 +24,7 @@ pub struct Job {
     pub schedule: JobSchedule,
     pub command: String,
     pub overlap: OverlapPolicy,
-    pub gate: Arc<Semaphore>, // 1-permit semaphore to guard overlap
+    pub gate: Semaphore, // 1-permit semaphore to guard overlap
 }
 
 #[derive(Debug, Clone)]
@@ -80,7 +80,7 @@ pub async fn discover(
     docker: &Docker,
     container_filter_label: Option<Label>,
     prefixes: &[String],
-) -> anyhow::Result<Vec<job::Job>> {
+) -> anyhow::Result<Vec<Job>> {
     let containers = docker
         .list_containers(Some(ListContainersOptions {
             all: true,
@@ -187,14 +187,14 @@ pub async fn discover(
                 _ => OverlapPolicy::Allow,
             };
 
-            jobs.push(crate::job::Job {
+            jobs.push(Job {
                 container_id: container_id.clone(),
                 container_name: container_name.clone(),
                 name: jobname,
                 schedule,
                 command,
                 overlap,
-                gate: Arc::new(Semaphore::new(1)),
+                gate: Semaphore::new(1),
             });
         }
     }
@@ -210,22 +210,8 @@ pub async fn run_loop(docker: Docker, job: Job) -> anyhow::Result<()> {
         overlap_policy = ?job.overlap,
         "job started"
     );
-
-    async fn run_once_async(docker: Docker, job: Job) {
-        let container_name = job.container_name.clone();
-        let job_name = job.name.clone();
-
-        let spawn_result = tokio::spawn(async move {
-            if let Err(e) = run_once(docker.clone(), job.clone()).await {
-                error!(container=%job.container_name, job=%job.name, error=?e, "execution failed");
-            }
-        })
-        .await;
-
-        if let Err(e) = spawn_result {
-            error!(container=%container_name, job=%job_name, error=?e, "could not spawn execution task");
-        }
-    }
+    let docker = Arc::new(docker);
+    let job = Arc::new(job);
 
     match job.schedule.clone() {
         JobSchedule::Every(repeat_duration) => {
@@ -240,7 +226,7 @@ pub async fn run_loop(docker: Docker, job: Job) -> anyhow::Result<()> {
                 match job.overlap {
                     OverlapPolicy::Allow => run_once_async(docker.clone(), job.clone()).await,
                     OverlapPolicy::Skip => {
-                        if let Ok(permit) = job.gate.clone().try_acquire_owned() {
+                        if let Ok(permit) = job.gate.try_acquire() {
                             run_once_async(docker.clone(), job.clone()).await;
                             drop(permit);
                         } else {
@@ -258,7 +244,7 @@ pub async fn run_loop(docker: Docker, job: Job) -> anyhow::Result<()> {
                 match job.overlap {
                     OverlapPolicy::Allow => run_once_async(docker.clone(), job.clone()).await,
                     OverlapPolicy::Skip => {
-                        if let Ok(permit) = job.gate.clone().try_acquire_owned() {
+                        if let Ok(permit) = job.gate.try_acquire() {
                             run_once_async(docker.clone(), job.clone()).await;
                             drop(permit);
                         } else {
@@ -273,7 +259,23 @@ pub async fn run_loop(docker: Docker, job: Job) -> anyhow::Result<()> {
     }
 }
 
-async fn run_once(docker: Docker, job: Job) -> anyhow::Result<()> {
+async fn run_once_async(docker: Arc<Docker>, job: Arc<Job>) {
+    let container_name = job.container_name.clone();
+    let job_name = job.name.clone();
+
+    let spawn_result = tokio::spawn(async move {
+        if let Err(e) = run_once(docker, job.clone()).await {
+            error!(container=%job.container_name, job=%job.name, error=?e, "execution failed");
+        }
+    })
+    .await;
+
+    if let Err(e) = spawn_result {
+        error!(container=%container_name, job=%job_name, error=?e, "could not spawn execution task");
+    }
+}
+
+async fn run_once(docker: Arc<Docker>, job: Arc<Job>) -> anyhow::Result<()> {
     info!(container=%job.container_name, job=%job.name, "exec starting");
 
     // Check if container is running
