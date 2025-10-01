@@ -18,7 +18,7 @@ COPY --from=builder /build/${BIN_NAME} /app/${BIN_NAME}
 
 ENV RUST_LOG=info \
     DOCKER_HOST=unix:///var/run/docker.sock \
-    LABEL_PREFIXES=ofelia,chadburn
+    LABEL_PREFIXES=dockcron,ofelia,chadburn
 
 USER 0:0
 

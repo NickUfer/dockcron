@@ -12,7 +12,7 @@ pub enum Command {
 
 #[derive(Debug, Clone, clap::Parser)]
 pub struct RunArgs {
-    #[arg(long, env = "LABEL_PREFIXES", default_values = ["ofelia", "chadburn"], value_delimiter = ',')]
+    #[arg(long, env = "LABEL_PREFIXES", default_values = ["dockcron", "ofelia", "chadburn"], value_delimiter = ',')]
     pub label_prefixes: Vec<String>,
     #[arg(long, env = "CONTAINER_LABEL_SELECTOR")]
     pub container_label_selector: Option<String>,
