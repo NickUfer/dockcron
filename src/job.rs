@@ -365,3 +365,206 @@ fn next_instant(schedule: Schedule) -> anyhow::Result<tokio::time::Instant> {
     let dur = (next_dt - now).to_std().unwrap_or_default();
     Ok(tokio::time::Instant::now() + dur)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_every_seconds() {
+        let schedule = JobSchedule::from_str("@every 30s").unwrap();
+        assert!(matches!(schedule, JobSchedule::Every(d) if d == Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn parse_every_minutes() {
+        let schedule = JobSchedule::from_str("@every 5m").unwrap();
+        assert!(matches!(schedule, JobSchedule::Every(d) if d == Duration::from_secs(300)));
+    }
+
+    #[test]
+    fn parse_every_hours() {
+        let schedule = JobSchedule::from_str("@every 2h").unwrap();
+        assert!(matches!(schedule, JobSchedule::Every(d) if d == Duration::from_secs(7200)));
+    }
+
+    #[test]
+    fn parse_every_complex() {
+        let schedule = JobSchedule::from_str("@every 1h30m").unwrap();
+        assert!(matches!(schedule, JobSchedule::Every(d) if d == Duration::from_secs(5400)));
+    }
+
+    #[test]
+    fn parse_every_with_whitespace() {
+        let schedule = JobSchedule::from_str("  @every 10s  ").unwrap();
+        assert!(matches!(schedule, JobSchedule::Every(d) if d == Duration::from_secs(10)));
+    }
+
+    #[test]
+    fn parse_cron_prefixed_6_field() {
+        let schedule = JobSchedule::from_str("@cron 0 * * * * *").unwrap();
+        assert!(matches!(schedule, JobSchedule::Cron(_)));
+    }
+
+    #[test]
+    fn parse_cron_prefixed_7_field() {
+        let schedule = JobSchedule::from_str("@cron 0 30 9 * * * *").unwrap();
+        assert!(matches!(schedule, JobSchedule::Cron(_)));
+    }
+
+    #[test]
+    fn parse_raw_cron_6_field() {
+        // This is the format from the original issue: "0 * * * * *"
+        let schedule = JobSchedule::from_str("0 * * * * *").unwrap();
+        assert!(matches!(schedule, JobSchedule::Cron(_)));
+    }
+
+    #[test]
+    fn parse_raw_cron_7_field() {
+        let schedule = JobSchedule::from_str("0 * * * * * *").unwrap();
+        assert!(matches!(schedule, JobSchedule::Cron(_)));
+    }
+
+    #[test]
+    fn parse_raw_cron_with_specific_values() {
+        // Every day at 2:30 AM
+        let schedule = JobSchedule::from_str("0 30 2 * * *").unwrap();
+        assert!(matches!(schedule, JobSchedule::Cron(_)));
+    }
+
+    #[test]
+    fn parse_raw_cron_with_ranges() {
+        // Monday through Friday at 9 AM
+        let schedule = JobSchedule::from_str("0 0 9 * * 1-5").unwrap();
+        assert!(matches!(schedule, JobSchedule::Cron(_)));
+    }
+
+    #[test]
+    fn parse_raw_cron_with_steps() {
+        // Every 5 minutes
+        let schedule = JobSchedule::from_str("0 */5 * * * *").unwrap();
+        assert!(matches!(schedule, JobSchedule::Cron(_)));
+    }
+
+    #[test]
+    fn parse_macro_hourly() {
+        let schedule = JobSchedule::from_str("@hourly").unwrap();
+        assert!(matches!(schedule, JobSchedule::Every(d) if d == Duration::from_secs(3600)));
+    }
+
+    #[test]
+    fn parse_macro_daily() {
+        let schedule = JobSchedule::from_str("@daily").unwrap();
+        assert!(matches!(schedule, JobSchedule::Every(d) if d == Duration::from_secs(86400)));
+    }
+
+    #[test]
+    fn parse_macro_every_24h() {
+        let schedule = JobSchedule::from_str("@every 24h").unwrap();
+        assert!(matches!(schedule, JobSchedule::Every(d) if d == Duration::from_secs(86400)));
+    }
+
+    #[test]
+    fn parse_macro_weekly() {
+        let schedule = JobSchedule::from_str("@weekly").unwrap();
+        assert!(matches!(schedule, JobSchedule::Every(d) if d == Duration::from_secs(604800)));
+    }
+
+    #[test]
+    fn parse_macro_monthly() {
+        let schedule = JobSchedule::from_str("@monthly").unwrap();
+        assert!(matches!(schedule, JobSchedule::Every(d) if d == Duration::from_secs(2592000)));
+    }
+
+    #[test]
+    fn parse_invalid_every_duration() {
+        let result = JobSchedule::from_str("@every invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_invalid_cron_expression() {
+        let result = JobSchedule::from_str("@cron invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_invalid_5_field_cron() {
+        // Standard 5-field cron is NOT supported by the cron crate
+        let result = JobSchedule::from_str("* * * * *");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_unsupported_macro() {
+        // @foobar is not a valid macro or cron expression
+        let result = JobSchedule::from_str("@foobar");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_empty_string() {
+        let result = JobSchedule::from_str("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_garbage() {
+        let result = JobSchedule::from_str("not a schedule");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn display_every() {
+        let schedule = JobSchedule::Every(Duration::from_secs(30));
+        let displayed = format!("{}", schedule);
+        assert_eq!(displayed, "@every 30s");
+    }
+
+    #[test]
+    fn display_every_complex() {
+        let schedule = JobSchedule::Every(Duration::from_secs(3661));
+        let displayed = format!("{}", schedule);
+        assert_eq!(displayed, "@every 1h 1m 1s");
+    }
+
+    #[test]
+    fn display_cron() {
+        let schedule = JobSchedule::from_str("@cron 0 * * * * *").unwrap();
+        let displayed = format!("{}", schedule);
+        assert!(displayed.starts_with("@cron "));
+    }
+
+    #[test]
+    fn roundtrip_every() {
+        let original = "@every 1h30m";
+        let schedule = JobSchedule::from_str(original).unwrap();
+        let displayed = format!("{}", schedule);
+        let reparsed = JobSchedule::from_str(&displayed).unwrap();
+
+        match (schedule, reparsed) {
+            (JobSchedule::Every(d1), JobSchedule::Every(d2)) => assert_eq!(d1, d2),
+            _ => panic!("Expected Every variants"),
+        }
+    }
+
+    #[test]
+    fn roundtrip_cron() {
+        let original = "@cron 0 30 9 * * *";
+        let schedule = JobSchedule::from_str(original).unwrap();
+        let displayed = format!("{}", schedule);
+        let reparsed = JobSchedule::from_str(&displayed).unwrap();
+
+        // Both should be Cron variants
+        assert!(matches!(schedule, JobSchedule::Cron(_)));
+        assert!(matches!(reparsed, JobSchedule::Cron(_)));
+    }
+
+    // Tests for cron crate's built-in macros (passed through as raw cron)
+    #[test]
+    fn parse_cron_macro_yearly() {
+        // @yearly is supported by the cron crate directly
+        let schedule = JobSchedule::from_str("@yearly").unwrap();
+        assert!(matches!(schedule, JobSchedule::Cron(_)));
+    }
+}
