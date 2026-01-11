@@ -16,7 +16,7 @@ jobs:
     secrets: inherit
 
   push-image:
-    uses: ./.github/workflows/release_build_binary.yml
+    uses: ./.github/workflows/release_push_image.yml
     with:
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
