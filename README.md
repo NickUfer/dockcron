@@ -11,8 +11,8 @@ commands, similar to Ofelia, but with a minimal Rust-based implementation.
 
 ## Quick Start
 
-- Pull image: `docker pull ghcr.io/nickufer/dockcron:v0.2.0`
-- Run (inspects all running containers): `docker run --rm ghcr.io/nickufer/dockcron:v0.2.0`
+- Pull image: `docker pull ghcr.io/nickufer/dockcron:v0.3.0`
+- Run (inspects all running containers): `docker run --rm ghcr.io/nickufer/dockcron:v0.3.0`
 
 Pass a container label selector to scope which containers are scanned for jobs:
 
@@ -35,7 +35,7 @@ This is a ready to use override file:
 ```yml
 services:
   ofelia-mailcow:
-    image: ghcr.io/nickufer/dockcron:v0.2.0
+    image: ghcr.io/nickufer/dockcron:v0.3.0
     command: ''
     environment:
       - CONTAINER_LABEL_SELECTOR=com.docker.compose.project=${COMPOSE_PROJECT_NAME}
@@ -59,7 +59,7 @@ After override (still the same container name):
 
 ```
 CONTAINER ID   NAME                               CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O         PIDS
-76ec13d0ea5c   mailcow-ofelia-mailcow-1           0.00%     2.586MiB / 1.827GiB   0.14%     4.85kB / 126B     1.96GB / 0B       3
+76ec13d0ea5c   mailcow-ofelia-mailcow-1           0.00%     2.586MiB / 7.755GiB   0.14%     4.85kB / 126B     1.96GB / 0B       3
 ...
 ```
 
