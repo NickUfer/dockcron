@@ -69,7 +69,13 @@ impl FromStr for JobSchedule {
                 "@daily" | "@every 24h" => Duration::from_secs(24 * 3600),
                 "@weekly" => Duration::from_secs(7 * 24 * 3600),
                 "@monthly" => Duration::from_secs(30 * 24 * 3600),
-                _ => return Err(anyhow!("unsupported schedule macro: {}", s)),
+                _ => {
+                    // Try parsing as raw cron expression (for compatibility with ofelia)
+                    if let Ok(schedule) = Schedule::from_str(s) {
+                        return Ok(JobSchedule::Cron(Box::new(schedule)));
+                    }
+                    return Err(anyhow!("unsupported schedule: {}", s));
+                }
             };
             Ok(JobSchedule::Every(dur))
         }
